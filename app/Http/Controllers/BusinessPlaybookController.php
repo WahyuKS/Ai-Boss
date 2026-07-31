@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use App\Models\SavedContent;
+use App\Services\GeminiService;
 
 class BusinessPlaybookController extends Controller
 {
@@ -20,7 +20,7 @@ class BusinessPlaybookController extends Controller
         return view('playbook', compact('templates'));
     }
 
-    public function generate(Request $request)
+    public function generate(Request $request, GeminiService $gemini)
     {
         try {
             $request->validate([
@@ -28,9 +28,7 @@ class BusinessPlaybookController extends Controller
                 'tugas_utama' => 'required|string',
             ]);
 
-            $apiKey = env('GEMINI_API_SYSTEM'); // Menggunakan kunci SYSTEM untuk hal operasional
-
-            // Susun instruksi untuk AI sebagai Manajer Operasional
+            // Susun instruksi untuk AI sebagai Manajer Operasional (SAMA PERSIS seperti sebelumnya)
             $prompt = "Bertindaklah sebagai Manajer Operasional Bisnis senior yang ahli dalam membuat SOP (Standar Operasional Prosedur) yang sangat terstruktur, mudah dipahami karyawan, dan anti-misskomunikasi.\n";
             $prompt .= "Buatkan saya SOP detail untuk detail berikut:\n\n";
             $prompt .= "- Posisi/Jabatan: " . $request->posisi_pekerjaan . "\n";
@@ -41,21 +39,11 @@ class BusinessPlaybookController extends Controller
             $prompt .= "3. Tambahkan indikator keberhasilan (KPI sederhana) untuk tugas ini.\n";
             $prompt .= "4. Format menggunakan tag HTML dasar seperti <br>, <strong>, atau <ul><li> agar rapi dibaca di web. JANGAN gunakan markdown bintang-bintang (**).";
 
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={$apiKey}", [
-                'contents' => [
-                    ['parts' => [['text' => $prompt]]]
-                ]
-            ]);
+            // Dulu: env('GEMINI_API_SYSTEM') 1 key langsung lewat Http::.
+            // Sekarang: lewat GeminiService, otomatis rotasi ke key lain kalau kena limit.
+            $reply = $gemini->generate($prompt);
 
-            if ($response->successful()) {
-                $result = $response->json();
-                $reply = $result['candidates'][0]['content']['parts'][0]['text'] ?? 'Gagal membuat SOP.';
-                return response()->json(['success' => true, 'hasil_ai' => $reply]);
-            }
-
-            return response()->json(['success' => false, 'message' => 'API Error']);
+            return response()->json(['success' => true, 'hasil_ai' => $reply]);
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()]);

@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'gemini' => [
+    'keys' => array_filter(explode(',', env('GEMINI_API_KEYS', ''))),
+    'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+],
+
 ];

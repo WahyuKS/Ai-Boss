@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use App\Models\SavedContent;
+use App\Services\GeminiService;
 
 class ContentStudioController extends Controller
 {
@@ -20,7 +20,7 @@ class ContentStudioController extends Controller
         return view('content-studio', compact('templates'));
     }
 
-    public function generate(Request $request)
+    public function generate(Request $request, GeminiService $gemini)
     {
         try {
             $request->validate([
@@ -29,9 +29,7 @@ class ContentStudioController extends Controller
                 'gaya_bahasa' => 'required|string',
             ]);
 
-            $apiKey = env('GEMINI_API_CREATIVE');
-
-            // Susun instruksi untuk AI sebagai Copywriter
+            // Susun instruksi untuk AI sebagai Copywriter (SAMA PERSIS seperti sebelumnya)
             $prompt = "Bertindaklah sebagai Copywriter Social Media & Content Creator senior.\n";
             $prompt .= "Buatkan saya naskah konten yang menarik dan viral berdasarkan detail berikut:\n\n";
             $prompt .= "- Topik/Produk: " . $request->topik . "\n";
@@ -42,23 +40,11 @@ class ContentStudioController extends Controller
             $prompt .= "2. Jika YouTube/Artikel: Berikan judul clickbait dan struktur skrip/naskahnya.\n";
             $prompt .= "3. Format menggunakan tag HTML dasar seperti <br> atau <strong> agar rapi dibaca di web, JANGAN gunakan format markdown bintang-bintang (**).";
 
-            // Menggunakan gemini-flash-latest agar cepat dan tidak kena limit
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={$apiKey}", [
-                'contents' => [
-                    ['parts' => [['text' => $prompt]]]
-                ]
-            ]);
+            // Dulu: env('GEMINI_API_CREATIVE') 1 key langsung lewat Http::.
+            // Sekarang: lewat GeminiService, otomatis rotasi ke key lain kalau kena limit.
+            $reply = $gemini->generate($prompt);
 
-            if ($response->successful()) {
-                $result = $response->json();
-                $reply = $result['candidates'][0]['content']['parts'][0]['text'] ?? 'Gagal membuat konten.';
-
-                return response()->json(['success' => true, 'hasil_ai' => $reply]);
-            }
-
-            return response()->json(['success' => false, 'message' => 'API Error']);
+            return response()->json(['success' => true, 'hasil_ai' => $reply]);
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()]);

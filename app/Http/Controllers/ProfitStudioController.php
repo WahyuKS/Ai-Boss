@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use App\Models\SavedContent;
+use App\Services\GeminiService;
 
 class ProfitStudioController extends Controller
 {
@@ -19,7 +19,7 @@ class ProfitStudioController extends Controller
         return view('profit-studio', compact('templates'));
     }
 
-    public function generate(Request $request)
+    public function generate(Request $request, GeminiService $gemini)
     {
         try {
             // Validasi dilonggarkan agar tidak crash jika ada form yang dikosongkan
@@ -27,9 +27,6 @@ class ProfitStudioController extends Controller
                 'nama_produk' => 'required|string',
                 'target_pasar' => 'required|string',
             ]);
-
-            // Gunakan API Key utama, jika gagal/kosong otomatis pakai API kreatif
-            $apiKey = env('GEMINI_API_SYSTEM') ?? env('GEMINI_API_CREATIVE');
 
             // PENGAMAN ANGKA: Konversi ke angka secara paksa untuk menghindari error tipe data
             $modal = is_numeric($request->modal_awal) ? (float) $request->modal_awal : 0;
@@ -50,23 +47,11 @@ class ProfitStudioController extends Controller
             $prompt .= "4. Strategi Psikologi Harga (Misal: pakai angka 99.000, coret harga, dsb).\n";
             $prompt .= "5. Format wajib menggunakan tag HTML dasar seperti <br>, <strong>, atau <ul><li>. JANGAN gunakan markdown bintang-bintang (**).";
 
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={$apiKey}", [
-                'contents' => [
-                    ['parts' => [['text' => $prompt]]]
-                ]
-            ]);
+            // Dulu: env('GEMINI_API_SYSTEM') ?? env('GEMINI_API_CREATIVE') (2 key manual).
+            // Sekarang: lewat GeminiService, otomatis rotasi ke SEMUA key kalau kena limit.
+            $reply = $gemini->generate($prompt);
 
-            if ($response->successful()) {
-                $result = $response->json();
-                $reply = $result['candidates'][0]['content']['parts'][0]['text'] ?? 'Gagal membuat Analisa. Coba kata kunci lain.';
-                return response()->json(['success' => true, 'hasil_ai' => $reply]);
-            }
-
-            // TANGKAP ERROR GOOGLE: Menampilkan alasan asli kenapa gagal dari server Google
-            $errorDetail = $response->json('error.message') ?? 'Terjadi gangguan koneksi ke server AI.';
-            return response()->json(['success' => false, 'message' => 'API Google: ' . $errorDetail]);
+            return response()->json(['success' => true, 'hasil_ai' => $reply]);
 
         } catch (\Throwable $e) {
             // Tangkap semua jenis error sistem (termasuk error typo coding)

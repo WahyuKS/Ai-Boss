@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use App\Models\SavedContent;
+use App\Services\GeminiService;
 
 class WorkflowController extends Controller
 {
@@ -20,7 +20,7 @@ class WorkflowController extends Controller
         return view('workflow', compact('templates'));
     }
 
-    public function generate(Request $request)
+    public function generate(Request $request, GeminiService $gemini)
     {
         try {
             $request->validate([
@@ -28,9 +28,7 @@ class WorkflowController extends Controller
                 'deskripsi' => 'required|string',
             ]);
 
-            $apiKey = env('GEMINI_API_SYSTEM');
-
-            // Susun instruksi untuk AI sebagai System Architect
+            // Susun instruksi untuk AI sebagai System Architect (SAMA PERSIS seperti sebelumnya)
             $prompt = "Bertindaklah sebagai Arsitek Sistem Bisnis & Pakar Otomatisasi (seperti ahli Zapier/Make.com).\n";
             $prompt .= "Tugas Anda adalah merancang alur kerja (workflow) otomatis untuk proses bisnis berikut:\n\n";
             $prompt .= "- Nama Proses: " . $request->nama_proses . "\n";
@@ -41,21 +39,11 @@ class WorkflowController extends Controller
             $prompt .= "3. Rekomendasikan 2-3 Tools/Software yang cocok digunakan (misal: Mailchimp, WhatsApp API, Google Sheets, dll).\n";
             $prompt .= "4. Format wajib menggunakan tag HTML dasar seperti <br>, <strong>, atau <ul><li> agar rapi dibaca di web. JANGAN gunakan markdown bintang-bintang (**).";
 
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={$apiKey}", [
-                'contents' => [
-                    ['parts' => [['text' => $prompt]]]
-                ]
-            ]);
+            // Dulu: env('GEMINI_API_SYSTEM') 1 key langsung lewat Http::.
+            // Sekarang: lewat GeminiService, otomatis rotasi ke key lain kalau kena limit.
+            $reply = $gemini->generate($prompt);
 
-            if ($response->successful()) {
-                $result = $response->json();
-                $reply = $result['candidates'][0]['content']['parts'][0]['text'] ?? 'Gagal membuat Workflow.';
-                return response()->json(['success' => true, 'hasil_ai' => $reply]);
-            }
-
-            return response()->json(['success' => false, 'message' => 'API Error']);
+            return response()->json(['success' => true, 'hasil_ai' => $reply]);
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()]);

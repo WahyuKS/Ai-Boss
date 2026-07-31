@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use App\Models\SavedContent; // Wajib dipanggil untuk akses database
+use App\Services\GeminiService;
 
 class CustomerCenterController extends Controller
 {
@@ -20,7 +20,7 @@ class CustomerCenterController extends Controller
         return view('customer-center', compact('templates'));
     }
 
-    public function generate(Request $request)
+    public function generate(Request $request, GeminiService $gemini)
     {
         try {
             $request->validate([
@@ -28,8 +28,6 @@ class CustomerCenterController extends Controller
                 'kategori' => 'required|string',
                 'pesan_dasar' => 'required|string',
             ]);
-
-            $apiKey = env('GEMINI_API_CREATIVE');
 
             $prompt = "Bertindaklah sebagai Customer Service Manager senior yang ahli dalam komunikasi persuasif, sangat ramah, dan berempati tinggi.\n";
             $prompt .= "Tugas Anda adalah merapikan pesan kasar dari owner menjadi template balasan pelanggan yang sangat profesional dan sopan.\n\n";
@@ -42,26 +40,14 @@ class CustomerCenterController extends Controller
             $prompt .= "2. Buat langsung kalimat balasannya saja, jangan bertele-tele.\n";
             $prompt .= "3. Gunakan tag HTML dasar seperti <br> untuk enter agar rapi saat dibaca di layar.";
 
-            // Tembak ke API Google menggunakan model flash-latest sesuai kesepakatan
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={$apiKey}", [
-                'contents' => [
-                    ['parts' => [['text' => $prompt]]]
-                ]
+            // Dulu: env('GEMINI_API_CREATIVE') 1 key langsung lewat Http::.
+            // Sekarang: lewat GeminiService, otomatis rotasi ke key lain kalau kena limit.
+            $reply = $gemini->generate($prompt);
+
+            return response()->json([
+                'success' => true,
+                'hasil_ai' => $reply
             ]);
-
-            if ($response->successful()) {
-                $result = $response->json();
-                $reply = $result['candidates'][0]['content']['parts'][0]['text'] ?? 'Gagal membuat template balasan.';
-
-                return response()->json([
-                    'success' => true,
-                    'hasil_ai' => $reply
-                ]);
-            }
-
-            return response()->json(['success' => false, 'message' => 'API Error']);
 
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()]);
